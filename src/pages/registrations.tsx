@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import Link from 'next/link'; // Importamos Link para la navegación
+import Link from 'next/link';
 import "../app/globals.css";
 
 interface Event {
@@ -22,6 +22,12 @@ export default function EventRegistrations() {
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [registrations, setRegistrations] = useState<Registration[]>([]);
+  const [editingRegistration, setEditingRegistration] = useState<Registration | null>(null);
+  const [registrationData, setRegistrationData] = useState({
+    name: '',
+    email: '',
+    seats: 1,
+  });
 
   // Obtener eventos
   useEffect(() => {
@@ -41,7 +47,6 @@ export default function EventRegistrations() {
         });
 
         const rawXml = response.data;
-
         // Expresiones regulares para extraer los datos de los eventos
         const eventRegex = /<events>(.*?)<\/events>/g;
         const idRegex = /<id>(.*?)<\/id>/;
@@ -98,7 +103,6 @@ export default function EventRegistrations() {
       });
 
       const rawXml = response.data;
-
       // Expresiones regulares para extraer los datos de las personas registradas
       const registrationRegex = /<registrations>(.*?)<\/registrations>/g;
       const idRegex = /<id>(.*?)<\/id>/;
@@ -133,6 +137,81 @@ export default function EventRegistrations() {
   const handleEventSelection = (event: Event) => {
     setSelectedEvent(event);
     fetchRegistrations(event.id!);
+  };
+
+  const handleEdit = (registration: Registration) => {
+    setEditingRegistration(registration);
+    setRegistrationData({
+      name: registration.name,
+      email: registration.email,
+      seats: registration.seats,
+    });
+  };
+
+  const handleDelete = async (registrationId: string) => {
+    if (!selectedEvent || !selectedEvent.id) {
+      console.error('No hay evento seleccionado para eliminar el registro.');
+      return;
+    }
+  
+    const xmlData = `
+      <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tns="http://localhost:3001/wsdl">
+        <soapenv:Header/>
+        <soapenv:Body>
+          <tns:deleteRegistration>
+            <id>${registrationId}</id>
+          </tns:deleteRegistration>
+        </soapenv:Body>
+      </soapenv:Envelope>
+    `;
+  
+    try {
+      await axios.post('http://localhost:3001/wsdl', xmlData, {
+        headers: { 'Content-Type': 'text/xml' },
+      });
+      alert('Registro eliminado con éxito');
+      fetchRegistrations(selectedEvent.id); // Refrescar lista de registros
+    } catch (error) {
+      console.error('Error al eliminar el registro:', error);
+    }
+  };
+  
+  const handleRegistrationUpdate = async () => {
+    if (editingRegistration && selectedEvent && selectedEvent.id) {
+      const xmlData = `
+        <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tns="http://localhost:3001/wsdl">
+          <soapenv:Header/>
+          <soapenv:Body>
+            <tns:updateRegistration>
+              <id>${editingRegistration.id}</id>
+              <name>${registrationData.name}</name>
+              <email>${registrationData.email}</email>
+              <seats>${registrationData.seats}</seats>
+            </tns:updateRegistration>
+          </soapenv:Body>
+        </soapenv:Envelope>
+      `;
+  
+      try {
+        await axios.post('http://localhost:3001/wsdl', xmlData, {
+          headers: { 'Content-Type': 'text/xml' },
+        });
+        alert('Registro actualizado con éxito');
+        fetchRegistrations(selectedEvent.id); // Refrescar lista de registros
+        setEditingRegistration(null); // Cerrar el formulario de edición
+      } catch (error) {
+        console.error('Error al actualizar el registro:', error);
+      }
+    } else {
+      console.error('No hay un evento seleccionado o un registro en edición.');
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setRegistrationData({
+      ...registrationData,
+      [e.target.name]: e.target.value,
+    });
   };
 
   return (
@@ -184,6 +263,7 @@ export default function EventRegistrations() {
                     <th className="py-2 px-4 border">Nombre</th>
                     <th className="py-2 px-4 border">Email</th>
                     <th className="py-2 px-4 border">Asientos Reservados</th>
+                    <th className="py-2 px-4 border">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -193,10 +273,70 @@ export default function EventRegistrations() {
                       <td className="py-2 px-4 border">{registration.name}</td>
                       <td className="py-2 px-4 border">{registration.email}</td>
                       <td className="py-2 px-4 border">{registration.seats}</td>
+                      <td className="py-2 px-4 border">
+                        <button
+                          onClick={() => handleEdit(registration)}
+                          className="bg-yellow-500 text-white py-1 px-3 rounded-lg mr-2"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => handleDelete(registration.id)}
+                          className="bg-red-500 text-white py-1 px-3 rounded-lg"
+                        >
+                          Eliminar
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+
+              {/* Formulario para editar registro, ahora justo debajo de la tabla */}
+              {editingRegistration && (
+                <div className="mt-4">
+                  <h2 className="text-xl font-bold mb-4">Editar Registro</h2>
+                  <form onSubmit={handleRegistrationUpdate}>
+                    <div>
+                      <label className="block text-sm font-semibold mb-2">Nombre:</label>
+                      <input
+                        type="text"
+                        name="name"
+                        value={registrationData.name}
+                        onChange={handleChange}
+                        className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-2">Email:</label>
+                      <input
+                        type="email"
+                        name="email"
+                        value={registrationData.email}
+                        onChange={handleChange}
+                        className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold mb-2">Asientos Reservados:</label>
+                      <input
+                        type="number"
+                        name="seats"
+                        value={registrationData.seats}
+                        onChange={handleChange}
+                        className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRegistrationUpdate}
+                      className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition duration-300 mt-4"
+                    >
+                      Actualizar Registro
+                    </button>
+                  </form>
+                </div>
+              )}
             </div>
           ) : (
             <p>{selectedEvent ? 'No hay personas registradas en este evento.' : 'Selecciona un evento para ver los registros.'}</p>
